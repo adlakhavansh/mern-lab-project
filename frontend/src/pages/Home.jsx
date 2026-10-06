@@ -1,23 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import { useOutletContext } from 'react-router-dom';
 
 export default function Home() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try { setUser((await api.get('/customers/me')).data); }
-      catch { navigate('/login'); }
-      finally { setLoading(false); }
-    };
-    fetchUser();
-  }, [navigate]);
-
-  if (loading) return <div className="text-center mt-10">Loading profile...</div>;
-  if (!user) return null;
+  const { user } = useOutletContext();
 
   return (
     <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded-lg shadow border">
