@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Products from './pages/Products';
 import ProductDetails from './pages/ProductDetails';
 import Wishlist from './pages/Wishlist';
+import Cart from './pages/Cart';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -24,6 +25,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/home" element={<Home />} />
               <Route path="/wishlist" element={<Wishlist />} />
+              <Route path="/cart" element={<Cart />} />
             </Route>
           </Routes>
         </div>
