@@ -391,3 +391,29 @@ test('orders: rejects an invalid order id with 400', async () => {
   const client = await registerCustomer();
   assert.equal((await client('GET', '/orders/not-an-objectid')).status, 400);
 });
+
+test('orders: status progression is forward-only and needs a paid order', async () => {
+  const client = await registerCustomer();
+  const customerId = created.customerIds.at(-1);
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+
+  const order = await seedPendingOrder(customerId, product, 'order_STATUS');
+
+  // unpaid order cannot progress
+  assert.equal((await client('PATCH', `/orders/${order._id}/status`, { status: 'SHIPPED' })).status, 400);
+
+  await mongoose.model('Order').updateOne(
+    { _id: order._id },
+    { $set: { paymentStatus: 'PAID', status: 'SHIPPED' } }
+  );
+
+  // backwards is refused
+  const backwards = await client('PATCH', `/orders/${order._id}/status`, { status: 'PLACED' });
+  assert.equal(backwards.status, 400);
+  assert.match(backwards.body.message, /forward/i);
+
+  // forwards is allowed
+  const forwards = await client('PATCH', `/orders/${order._id}/status`, { status: 'DELIVERED' });
+  assert.equal(forwards.status, 200);
+  assert.equal(forwards.body.order.status, 'DELIVERED');
+});

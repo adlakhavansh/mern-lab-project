@@ -160,13 +160,16 @@ exports.getOrderById = async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };
 
-// Bonus: order status progression. Development helper, as the lab allows.
+// Bonus: order status progression. A development helper, as the lab allows —
+// the route is only registered outside production (see routes/order.routes.js),
+// because in a real shop the seller moves an order along, not the buyer.
+const PROGRESSION = ['PLACED', 'CONFIRMED', 'SHIPPED', 'DELIVERED'];
+
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const allowed = ['PLACED', 'CONFIRMED', 'SHIPPED', 'DELIVERED'];
     const { status } = req.body || {};
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: `Status must be one of ${allowed.join(', ')}` });
+    if (!PROGRESSION.includes(status)) {
+      return res.status(400).json({ success: false, message: `Status must be one of ${PROGRESSION.join(', ')}` });
     }
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ success: false, message: 'Invalid order ID' });
@@ -176,6 +179,15 @@ exports.updateOrderStatus = async (req, res) => {
     if (order.paymentStatus !== 'PAID') {
       return res.status(400).json({ success: false, message: 'Only paid orders can progress' });
     }
+
+    // Forward-only: an order cannot be walked back to an earlier stage
+    if (PROGRESSION.indexOf(status) <= PROGRESSION.indexOf(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Status can only move forward, and this order is already ${order.status}`
+      });
+    }
+
     order.status = status;
     await order.save();
     res.status(200).json({ success: true, order });
