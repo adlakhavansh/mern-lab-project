@@ -130,3 +130,80 @@ test('wishlist: toggle saves then unsaves and reports the count', async () => {
   assert.equal(off.body.saved, false);
   assert.equal(off.body.count, 0);
 });
+
+test('cart: rejects an unauthenticated request', async () => {
+  const anon = makeClient();
+  assert.equal((await anon('GET', '/cart')).status, 401);
+});
+
+test('cart: adding the same product twice increments quantity instead of duplicating', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gte: 2 } });
+
+  const first = await client('POST', `/cart/${product._id}`);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.cart.length, 1);
+  assert.equal(first.body.cart[0].quantity, 1);
+
+  const second = await client('POST', `/cart/${product._id}`);
+  assert.equal(second.body.cart.length, 1, 'no duplicate row for the same product');
+  assert.equal(second.body.cart[0].quantity, 2);
+  // populate() ran
+  assert.equal(second.body.cart[0].product.name, product.name);
+});
+
+test('cart: refuses to exceed available stock', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+
+  const tooMany = await client('PATCH', `/cart/${product._id}`, { quantity: product.stock + 1 });
+  assert.equal(tooMany.status, 404, 'product is not in the cart yet');
+
+  await client('POST', `/cart/${product._id}`);
+  const over = await client('PATCH', `/cart/${product._id}`, { quantity: product.stock + 1 });
+  assert.equal(over.status, 400);
+
+  const atLimit = await client('PATCH', `/cart/${product._id}`, { quantity: product.stock });
+  assert.equal(atLimit.status, 200);
+  assert.equal(atLimit.body.cart[0].quantity, product.stock);
+
+  // one more "add" would push past stock
+  const bump = await client('POST', `/cart/${product._id}`);
+  assert.equal(bump.status, 400);
+});
+
+test('cart: refuses a product that is out of stock', async () => {
+  const client = await registerCustomer();
+  const soldOut = await Product.findOne({ stock: 0 });
+  if (!soldOut) return; // seed data always has one, but do not fail the suite if it changed
+  const res = await client('POST', `/cart/${soldOut._id}`);
+  assert.equal(res.status, 400);
+  assert.match(res.body.message, /out of stock/i);
+});
+
+test('cart: rejects quantity below 1 and non-numeric quantity', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  await client('POST', `/cart/${product._id}`);
+
+  assert.equal((await client('PATCH', `/cart/${product._id}`, { quantity: 0 })).status, 400);
+  assert.equal((await client('PATCH', `/cart/${product._id}`, { quantity: -3 })).status, 400);
+  assert.equal((await client('PATCH', `/cart/${product._id}`, { quantity: 'two' })).status, 400);
+});
+
+test('cart: rejects a malformed product id with 400, not 500', async () => {
+  const client = await registerCustomer();
+  assert.equal((await client('POST', '/cart/not-an-objectid')).status, 400);
+});
+
+test('cart: remove empties the row and reports the updated cart', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  await client('POST', `/cart/${product._id}`);
+
+  const removed = await client('DELETE', `/cart/${product._id}`);
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.cart.length, 0);
+
+  assert.equal((await client('DELETE', `/cart/${product._id}`)).status, 404);
+});
