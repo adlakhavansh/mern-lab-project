@@ -4,12 +4,13 @@ import { useCart } from '../context/CartContext';
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const { wishlistCount, isAuthed, setIsAuthed } = useCart();
+  const { wishlistCount, itemCount, isAuthed, setIsAuthed, clearCartState } = useCart();
 
   const handleLogout = async () => {
     try { await api.post('/customers/logout'); }
     catch (error) { console.error('Logout failed', error); } // e.g. already logged out (401)
     finally {
+      clearCartState();
       setIsAuthed(false);
       navigate('/login');
     }
@@ -26,6 +27,7 @@ export default function Navbar() {
         <Link className={linkClass} to="/home">Home</Link>
         <Link className={linkClass} to="/products">Products</Link>
         {isAuthed && <Link className={linkClass} to="/wishlist">Wishlist ({wishlistCount})</Link>}
+        {isAuthed && <Link className={linkClass} to="/cart">Cart ({itemCount})</Link>}
         {isAuthed === false && <Link className={linkClass} to="/login">Login</Link>}
         {isAuthed && (
           <button
