@@ -28,6 +28,7 @@ export default function Navbar() {
         <Link className={linkClass} to="/products">Products</Link>
         {isAuthed && <Link className={linkClass} to="/wishlist">Wishlist ({wishlistCount})</Link>}
         {isAuthed && <Link className={linkClass} to="/cart">Cart ({itemCount})</Link>}
+        {isAuthed && <Link className={linkClass} to="/orders">Orders</Link>}
         {isAuthed === false && <Link className={linkClass} to="/login">Login</Link>}
         {isAuthed && (
           <button
