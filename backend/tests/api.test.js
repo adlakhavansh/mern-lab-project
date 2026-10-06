@@ -207,3 +207,187 @@ test('cart: remove empties the row and reports the updated cart', async () => {
 
   assert.equal((await client('DELETE', `/cart/${product._id}`)).status, 404);
 });
+
+const crypto = require('node:crypto');
+
+const VALID_ADDRESS = {
+  fullName: 'Lab Test', phone: '9876543210', addressLine1: '22 MG Road',
+  city: 'Bengaluru', state: 'Karnataka', pincode: '560001'
+};
+
+// Stands in for the pending order that Razorpay order creation would have written,
+// so signature verification can be tested without Razorpay credentials.
+const seedPendingOrder = async (customerId, product, razorpayOrderId) => {
+  const Order = mongoose.model('Order');
+  const order = await Order.create({
+    user: customerId,
+    items: [{ product: product._id, name: product.name, price: product.price, quantity: 1, image: product.image }],
+    shippingAddress: VALID_ADDRESS,
+    totalAmount: product.price,
+    ...(razorpayOrderId ? { razorpayOrderId } : {})
+  });
+  created.orderIds.push(order._id);
+  return order;
+};
+
+test('orders: rejects an unauthenticated request', async () => {
+  const anon = makeClient();
+  assert.equal((await anon('GET', '/orders')).status, 401);
+});
+
+test('orders: refuses checkout with an empty cart', async () => {
+  const client = await registerCustomer();
+  const res = await client('POST', '/orders/create-payment-order', { shippingAddress: VALID_ADDRESS });
+  assert.equal(res.status, 400);
+  assert.match(res.body.message, /cart/i);
+});
+
+test('orders: refuses checkout when the shipping address is invalid', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  await client('POST', `/cart/${product._id}`);
+
+  const res = await client('POST', '/orders/create-payment-order', {
+    shippingAddress: { fullName: '   ', phone: '12', addressLine1: '', city: '', state: '', pincode: '56' }
+  });
+  assert.equal(res.status, 400);
+});
+
+test('orders: refuses checkout when stock dropped below the cart quantity', async () => {
+  const client = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gte: 3 } });
+  const originalStock = product.stock;
+
+  await client('POST', `/cart/${product._id}`);
+  await client('PATCH', `/cart/${product._id}`, { quantity: 3 });
+
+  // somebody else buys the shelf out between add-to-cart and checkout
+  await Product.updateOne({ _id: product._id }, { $set: { stock: 1 } });
+  try {
+    const res = await client('POST', '/orders/create-payment-order', { shippingAddress: VALID_ADDRESS });
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /stock/i);
+  } finally {
+    await Product.updateOne({ _id: product._id }, { $set: { stock: originalStock } });
+  }
+});
+
+test('orders: verify-payment rejects a forged signature and leaves the cart alone', async () => {
+  const client = await registerCustomer();
+  const customerId = created.customerIds.at(-1);
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  await client('POST', `/cart/${product._id}`);
+
+  const pending = await seedPendingOrder(customerId, product, 'order_TEST123');
+
+  const forged = await client('POST', '/orders/verify-payment', {
+    shopKartOrderId: pending._id.toString(),
+    razorpay_payment_id: 'pay_TEST123',
+    razorpay_signature: 'definitely-not-a-real-signature'
+  });
+  assert.equal(forged.status, 400);
+
+  const untouched = await mongoose.model('Order').findById(pending._id);
+  assert.notEqual(untouched.paymentStatus, 'PAID');
+  assert.equal(untouched.status, 'PENDING_PAYMENT');
+
+  const cart = await client('GET', '/cart');
+  assert.equal(cart.body.cart.length, 1, 'a failed verification must not clear the cart');
+});
+
+test('orders: verify-payment accepts a correct signature, marks PAID and clears the cart', async () => {
+  const client = await registerCustomer();
+  const customerId = created.customerIds.at(-1);
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  await client('POST', `/cart/${product._id}`);
+
+  const pending = await seedPendingOrder(customerId, product, 'order_TEST456');
+  const paymentId = 'pay_TEST456';
+  const signature = crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .update(`${pending.razorpayOrderId}|${paymentId}`)
+    .digest('hex');
+
+  const verified = await client('POST', '/orders/verify-payment', {
+    shopKartOrderId: pending._id.toString(),
+    razorpay_payment_id: paymentId,
+    razorpay_signature: signature
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.body));
+  assert.equal(verified.body.order.paymentStatus, 'PAID');
+  assert.equal(verified.body.order.status, 'PLACED');
+  assert.equal(verified.body.order.razorpayPaymentId, paymentId);
+
+  const cart = await client('GET', '/cart');
+  assert.equal(cart.body.cart.length, 0, 'verified payment clears the cart');
+
+  const list = await client('GET', '/orders');
+  assert.equal(list.body.orders.length, 1);
+  assert.equal(list.body.orders[0].totalAmount, product.price);
+});
+
+test('orders: signature is checked against the stored razorpayOrderId, not a client-supplied one', async () => {
+  const client = await registerCustomer();
+  const customerId = created.customerIds.at(-1);
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+
+  const pending = await seedPendingOrder(customerId, product, 'order_STORED');
+
+  // Signature valid for an order id the caller chose, not the one on the order row
+  const paymentId = 'pay_ATTACK';
+  const signature = crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .update(`order_ATTACKER_CHOICE|${paymentId}`)
+    .digest('hex');
+
+  const res = await client('POST', '/orders/verify-payment', {
+    shopKartOrderId: pending._id.toString(),
+    razorpay_order_id: 'order_ATTACKER_CHOICE',
+    razorpay_payment_id: paymentId,
+    razorpay_signature: signature
+  });
+  assert.equal(res.status, 400);
+});
+
+test('orders: a customer cannot read another customer order', async () => {
+  const a = await registerCustomer();
+  const ownerId = created.customerIds.at(-1);
+  const b = await registerCustomer();
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+
+  const order = await seedPendingOrder(ownerId, product, null);
+
+  assert.equal((await a('GET', `/orders/${order._id}`)).status, 200);
+  assert.equal((await b('GET', `/orders/${order._id}`)).status, 404);
+  assert.equal((await b('GET', '/orders')).body.orders.length, 0);
+});
+
+test('orders: snapshot keeps the purchase-time price when the product price changes later', async () => {
+  const client = await registerCustomer();
+  const customerId = created.customerIds.at(-1);
+  const product = await Product.findOne({ stock: { $gt: 0 } });
+  const originalPrice = product.price;
+
+  const Order = mongoose.model('Order');
+  const order = await Order.create({
+    user: customerId,
+    items: [{ product: product._id, name: product.name, price: originalPrice, quantity: 2, image: product.image }],
+    shippingAddress: VALID_ADDRESS,
+    totalAmount: originalPrice * 2
+  });
+  created.orderIds.push(order._id);
+
+  await Product.updateOne({ _id: product._id }, { $set: { price: originalPrice + 1000 } });
+  try {
+    const res = await client('GET', `/orders/${order._id}`);
+    assert.equal(res.body.order.items[0].price, originalPrice);
+    assert.equal(res.body.order.totalAmount, originalPrice * 2);
+  } finally {
+    await Product.updateOne({ _id: product._id }, { $set: { price: originalPrice } });
+  }
+});
+
+test('orders: rejects an invalid order id with 400', async () => {
+  const client = await registerCustomer();
+  assert.equal((await client('GET', '/orders/not-an-objectid')).status, 400);
+});
