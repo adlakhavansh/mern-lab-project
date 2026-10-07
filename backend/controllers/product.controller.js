@@ -39,3 +39,12 @@ exports.getProductById = async (req, res) => {
     res.status(200).json(product);
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };
+
+// The category dropdown reads this instead of hardcoding a list that drifts
+// from what is actually in the database.
+exports.getCategories = async (req, res) => {
+  try {
+    const categories = await Product.distinct('category');
+    res.status(200).json({ success: true, categories: categories.sort() });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import api from '../services/api';
+import api, { getCategories } from '../services/api';
 import ProductCard from '../components/ProductCard';
 import SearchBar from '../components/SearchBar';
 
@@ -10,6 +10,12 @@ export default function Products() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState('');
+  const [categories, setCategories] = useState([]);
+
+  // Fetched once: a failed call just leaves the dropdown at 'All Categories'
+  useEffect(() => {
+    getCategories().then(data => setCategories(data.categories)).catch(() => setCategories([]));
+  }, []);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -29,7 +35,7 @@ export default function Products() {
 
   return (
     <div className="mt-6">
-      <SearchBar onSearch={setSearch} onCategoryChange={setCategory} onSortChange={setSort} />
+      <SearchBar categories={categories} onSearch={setSearch} onCategoryChange={setCategory} onSortChange={setSort} />
       {loading && <div className="text-center text-xl mt-10">Loading products...</div>}
       {error && <div className="text-center text-red-500 mt-10">{error}</div>}
       {!loading && !error && products.length === 0 && <div className="text-center text-gray-500 mt-10">No products found.</div>}

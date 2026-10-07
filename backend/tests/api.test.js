@@ -417,3 +417,12 @@ test('orders: status progression is forward-only and needs a paid order', async 
   assert.equal(forwards.status, 200);
   assert.equal(forwards.body.order.status, 'DELIVERED');
 });
+
+test('products: categories endpoint lists the real categories in the database', async () => {
+  const anon = makeClient();
+  const res = await anon('GET', '/products/categories');
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.categories));
+  const expected = await Product.distinct('category');
+  assert.deepEqual([...res.body.categories].sort(), [...expected].sort());
+});

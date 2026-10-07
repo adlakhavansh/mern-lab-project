@@ -19,3 +19,6 @@ export const createPaymentOrder = async (shippingAddress) =>
 export const verifyPayment = async (payload) => (await api.post('/orders/verify-payment', payload)).data;
 export const getOrders = async () => (await api.get('/orders')).data;
 export const getOrder = async (id) => (await api.get(`/orders/${id}`)).data;
+
+// Products
+export const getCategories = async () => (await api.get('/products/categories')).data;
