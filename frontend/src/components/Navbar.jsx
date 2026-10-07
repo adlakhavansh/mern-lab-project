@@ -16,11 +16,12 @@ export default function Navbar() {
     }
   };
 
-  const linkClass = 'hover:underline focus:outline-none focus:ring-2 focus:ring-white/70 rounded px-1';
+  // min-h-11 keeps every nav target above the 44px guideline on a phone
+  const linkClass = 'inline-flex items-center min-h-11 px-2 hover:underline focus:outline-none focus:ring-2 focus:ring-white/70 rounded';
 
   return (
     <nav className="bg-blue-600 p-4 text-white shadow-md flex flex-wrap items-center justify-between gap-y-2">
-      <Link to="/home" className="text-xl font-bold focus:outline-none focus:ring-2 focus:ring-white/70 rounded">
+      <Link to="/home" className="text-xl font-bold inline-flex items-center min-h-11 focus:outline-none focus:ring-2 focus:ring-white/70 rounded">
         ShopKart
       </Link>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm sm:text-base">
@@ -34,7 +35,7 @@ export default function Navbar() {
           <button
             type="button"
             onClick={handleLogout}
-            className="bg-red-500 px-3 py-1 rounded hover:bg-red-600 transition focus:outline-none focus:ring-2 focus:ring-white/70"
+            className="bg-red-500 px-3 min-h-11 rounded hover:bg-red-600 transition focus:outline-none focus:ring-2 focus:ring-white/70"
           >
             Logout
           </button>

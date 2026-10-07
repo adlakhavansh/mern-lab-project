@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
+import { useCart } from '../context/CartContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { refreshAll } = useCart();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    try { await api.post('/customers/login', { email, password }); navigate('/home'); }
-    catch (err) { setError('Invalid Credentials'); }
+    try {
+      await api.post('/customers/login', { email, password });
+      await refreshAll(); // navbar counts must reflect this customer immediately
+      navigate('/home');
+    } catch {
+      setError('Invalid Credentials');
+    }
   };
 
   return (

@@ -91,6 +91,12 @@ export function CartProvider({ children }) {
   const removeFromCart = useCallback((productId) => runMutation(() => removeFromCartApi(productId)), [runMutation]);
   const clearCartState = useCallback(() => setCartItems([]), []);
 
+  // Login navigates without remounting the provider, so the page that signs in
+  // has to ask for a re-sync or the navbar keeps showing the guest state.
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshCart(), refreshWishlist()]);
+  }, [refreshCart, refreshWishlist]);
+
   const value = useMemo(() => ({
     cartItems,
     loading,
@@ -109,11 +115,12 @@ export function CartProvider({ children }) {
     toggleWishlistItem,
     dropWishlistItem,
     refreshWishlist,
+    refreshAll,
     clearCartState
   }), [
     cartItems, loading, error, isAuthed, wishlistIds,
     addToCart, updateQuantity, removeFromCart, refreshCart,
-    toggleWishlistItem, dropWishlistItem, refreshWishlist, clearCartState
+    toggleWishlistItem, dropWishlistItem, refreshWishlist, refreshAll, clearCartState
   ]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
