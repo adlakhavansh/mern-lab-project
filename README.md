@@ -202,6 +202,3 @@ frontend/src/
 ├── services/api.js             axios instance + every endpoint call
 └── utils/razorpay.js           checkout script loader
 ```
-
-Further documentation: `docs/VIVA.md` (viva preparation), `docs/labs/` (the six problem
-statements).
